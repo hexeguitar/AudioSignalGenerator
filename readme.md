@@ -33,6 +33,8 @@ Audio Test Signal Generator
 * [Teensy3.1 or 3.2](https://www.pjrc.com/store/teensy32.html)  
 * [Teensy Audio Shield](https://www.pjrc.com/store/teensy3_audio.html)  
 * [Dev_LOOP](http://www.hexeguitar.com/diy/utility/devloop)   
+* 4x4 Keypad
+* SSD1306 I2C OLED display
 ------
 #### Software:  
 Firmware has been written using [PlatformIO](http://platformio.org/) add-on for Atom.  
@@ -90,7 +92,7 @@ Modified libraries are supplied with the project (*/lib*). There is no extra ste
 ------
 ### To do:
 - Check for potential bugs caused by the lack of SD card or init gone bad.
-- Square and Pulse waveforms - maybe use the onboard DAC instad of audio codec. One of the free pins could be used to drive a relay switching between codec and DAC outputs. 
+- Square and Pulse waveforms - maybe use the onboard DAC instad of audio codec. One of the free pins could be used to drive a relay switching between codec and DAC outputs.
 
 ------
 (c) 07.2017 by Piotr Zapart  

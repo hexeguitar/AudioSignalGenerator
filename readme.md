@@ -1,7 +1,7 @@
 Audio Test Signal Generator
 ========
 
-### Teensy3.1/3.2 based test signal generator
+Teensy3.1/3.2 based audio range test signal generator designed to aid building musical instruments and effects.    
 
 [![AudioTestSignalGenerator](http://img.youtube.com/vi/fiGgEgc5klA/0.jpg)](http://www.youtube.com/watch?v=fiGgEgc5klA)
 
@@ -37,7 +37,7 @@ Audio Test Signal Generator
 * SSD1306 I2C OLED display
 ------
 #### Software:  
-Firmware has been written using [PlatformIO](http://platformio.org/) add-on for Atom.  
+Firmware has been written using [PlatformIO](http://platformio.org/) and Atom text editor.  
 The full project is available in the */firmware* directory.  
 
 I have modified or upgraded a few libraries to get the planned features and make the best (or better vs stock Arduino libs) use of the hardware on the Teensy3:
@@ -90,15 +90,32 @@ Modified libraries are supplied with the project (*/lib*). There is no extra ste
 ![alt text][pic3]
 ![alt text][pic4]
 ------
+### WAV files
+Device is capable pf playing up to 100 16bit/44.1kHz stereo WAV files. This number can be easily expanded in software in necessary. WAV files are stored on an micro SD card (up to 32GB - see [here](https://www.pjrc.com/store/teensy3_audio.html) for recommendations) and use the following naming scheme:
+
+```
+waveXX.wav
+
+wave00.wav
+wave01.wav
+...
+wave99.wav
+```
+where **XX** is the number in range 00 to 99.  
+
+------
+
 ### To do:
 - Check for potential bugs caused by the lack of SD card or init gone bad.
 - Square and Pulse waveforms - maybe use the onboard DAC instad of audio codec. One of the free pins could be used to drive a relay switching between codec and DAC outputs.
+- Dedicated analog IO board for the Teensy Audio Shield.
 
 ------
 (c) 07.2017 by Piotr Zapart  
 www.hexeguitar.com
 
 [pic1]: pics/WaveGen_keypad.png "WaveformGenerator"
+
 [pic2]: pics/SinSweep_keypad.png "SinSweepGenerator"
 [pic3]: pics/WavPlay_keypad.png "WavPlayer"
 [pic4]: pics/NoiseGen_keypad.png "NoiseGenerator"

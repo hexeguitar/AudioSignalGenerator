@@ -10,6 +10,7 @@
  *                              2. added sweep pause option
  *                              3. added sweep direction control
  *                              4. added sweep stop option
+                                5. fixed a few bugs https://forum.pjrc.com/threads/45246
  *          - synth_waveform:   fixed a small bug, pulse waveform was generated
  *                              at half of the set frequency
  * - SD.h : Teensy optimization turned on
@@ -36,6 +37,7 @@
  * THE SOFTWARE.
  */
 
+#include <AudioStream.h>
 #include <Audio.h>
 #include <i2c_t3.h>
 #include <SPI.h>
@@ -47,11 +49,12 @@
 #include <TimerOne.h>
 #include <EEPROM.h>
 
+
 // help_txt.c & freq_table.c & symbols_bmp.h
 extern "C"
 {
     extern const char * help_txt[];
-    extern const float noteFreqTable[9][12];
+    extern const float noteFreqTable[10][12];
     extern const char * noteNameTable[];
     extern const uint8_t waveSymbols[];
     extern const uint8_t welcomeScrn[];
@@ -115,10 +118,11 @@ typedef enum
 #define SIG_GEN_CH      1
 #define WHITE_NOISE_CH  2
 #define SIN_SWEEP_CH    3
-
 #define PINK_NOISE_CH   0       //output mixer: pink noise ch = wav player ch
-
 #define PINK_NOISE_CHSD 2       //SD out mixer: pin noise ch = 2
+
+#define RELAY_CTRL      20      //relay switching the output
+                                //between the codec and 12bit DAC
 //##############################################################################
 // ### Display settings ###
 #define DISP_TXT_ROW0   20
@@ -129,7 +133,7 @@ typedef enum
 
 const char * engineStateTxt[] =
 {
-    "WAV PLAYER","WAV GEN","NOISE","SIN SWEEP"
+    "WAV PLAYER","SIG GEN","NOISE","SIN SWEEP"
 };
 //##############################################################################
 // ### WAV player ###
@@ -157,7 +161,7 @@ typedef enum
     WAV_PLAYER_A,
     WAV_PLAYER_B
 } wavPlayerNo_t;
-
+//used manual wav number input
 typedef enum
 {
     SETNAME_OFF,
@@ -170,31 +174,31 @@ char currentFile[] = "wave00.wav";
 //##############################################################################
 // ### SIGnal Generator ###
 #define SIGGEN_PHASE_DEFAULT    0
-#define SIGGEN_AMPL_DEFAULT     1
 #define SIGGEN_MAX_OCTAVE       8
+#define SIGGEN_AMPL_DEFAULT     1
+#define NOTE_MODE               true
+#define TECH_MODE               false
 #define NOTE_C                  0
 #define NOTE_B                  11
 #define NOTE_A                  9
 #define NOTE_OFF                255 //used to turn displaying the note off
-#define FREQ_1                  100 // keypad 1 freq preset = 100Hz
-#define FREQ_3                  1000
-#define FREQ_7                  5000
-#define FREQ_9                  10000
-#define FREQ_0                  22000
+#define FREQ_TECH_OCT           9
 #define MAX_WAVEFORMS           5
+
 const uint8_t waveIndex[MAX_WAVEFORMS+1] = {
-                                WAVEFORM_SINE,
-                                WAVEFORM_TRIANGLE,
-                                WAVEFORM_SQUARE,
-                                WAVEFORM_PULSE,
-                                WAVEFORM_SAWTOOTH,
-                                WAVEFORM_SAWTOOTH_REVERSE
+                                WAVEFORM_SINE,                  //SIN 0
+                                WAVEFORM_TRIANGLE,              //TRI 1
+                                WAVEFORM_SQUARE,                //SQR 2
+                                WAVEFORM_PULSE,                 //PUL 3
+                                WAVEFORM_SAWTOOTH,              //RDN 4
+                                WAVEFORM_SAWTOOTH_REVERSE       //RUP 5
                             };
 uint8_t sigGen_note = NOTE_A;   //default starting value
 uint8_t sigGen_oct = 4;         //default octave is 4
 short sigGen_wave = 0;
 float sigGen_duty = 1.0;
 float sigGen_freq = noteFreqTable[sigGen_oct][sigGen_note];
+bool freqMode = NOTE_MODE;
 //##############################################################################
 // ### Sin Sweep Generator ###
 #define SINSWEEP_DIR_UP     1
@@ -202,9 +206,6 @@ float sigGen_freq = noteFreqTable[sigGen_oct][sigGen_note];
 
 const int sinSweepStartF = 16;
 const int sinSweepEndF = 22000;
-
-// const int sinSweepStartF = 20;
-// const int sinSweepEndF = 22000;
 const float sinSweepLvl = 1.0;
 const float sinSweepTime_ms[10] =
 {
@@ -233,21 +234,20 @@ Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
 void handleKeyPress(char key);                                  //main key press handler
 bool keypadHandleWavPlayer(char key);                           //wav player key press handler
 
-void mixerSetChannel(outputChannel_t ch);
+bool mixerSetChannel(outputChannel_t ch);
 
-void setSigGen(float freq, short waveform);
-
-void playSinSweep(float time_ms, int dir);
-bool playFile(const char *filename, wavPlayerNo_t playerNo);
+bool setSigGen(float freq, short waveform);                     //mode A - Waveform generator
+bool playSinSweep(float time_ms, int dir);                      //mode B - Sine Sweep
+bool playFile(const char *filename, wavPlayerNo_t playerNo);    //mode C - WAV player
 void playNewFile(void);
 void wavLooper(void);
 bool setFileName(char waveNo);
 bool setFileNameDigit(uint8_t value, uint8_t mask);
 
-void displayClrMainArea(void);
+void displayClrMainArea(void);                                  //display functions
 void displayMainArea(void);
 void displayNote(uint8_t octave, uint8_t note);
-void displayFreq(float freq);
+void displayFreqWarning(void);
 void displayWaveSymbol(uint8_t wave);
 void displayWavProgress(void);
 void displayFileName(void);
@@ -263,17 +263,19 @@ void displayStartScreen(engineState_t mode);
 void ISR_checkWavePosition(void);
 //##############################################################################
 // GUItool: begin automatically generated code
-AudioSynthNoisePink      pink;           //xy=480,293
-AudioPlaySdWav           playSdWavB;     //xy=492,176
-AudioPlaySdWav           playSdWavA;     //xy=493,103
-AudioMixer4              mixerSD_R;      //xy=706,188
-AudioMixer4              mixerSD_L;      //xy=708,116
-AudioSynthToneSweep      tonesweep;      //xy=712,336
-AudioSynthWaveform       wave;           //xy=717,246
-AudioSynthNoiseWhite     noise;          //xy=719,294
-AudioMixer4              mixerL;         //xy=1023,213
-AudioMixer4              mixerR;         //xy=1026,285
-AudioOutputI2S           i2s;            //xy=1202,211
+AudioSynthNoisePink      pink;           //xy=419,310
+AudioPlaySdWav           playSdWavB;     //xy=431,193
+AudioPlaySdWav           playSdWavA;     //xy=432,120
+AudioMixer4              mixerSD_R;      //xy=645,205
+AudioMixer4              mixerSD_L;      //xy=647,133
+AudioSynthToneSweep      tonesweep;      //xy=651,353
+AudioSynthWaveform       wave;           //xy=656,263
+AudioSynthNoiseWhite     noise;          //xy=658,311
+AudioMixer4              mixerL;         //xy=962,230
+AudioMixer4              mixerDAC; //xy=963,158
+AudioMixer4              mixerR;         //xy=965,302
+AudioOutputI2S           i2s;            //xy=1141,228
+AudioOutputAnalog        dac12;           //xy=1142,178
 AudioConnection          patchCord1(pink, 0, mixerSD_L, 2);
 AudioConnection          patchCord2(pink, 0, mixerSD_R, 2);
 AudioConnection          patchCord3(playSdWavB, 0, mixerSD_L, 1);
@@ -286,12 +288,15 @@ AudioConnection          patchCord9(tonesweep, 0, mixerL, 3);
 AudioConnection          patchCord10(tonesweep, 0, mixerR, 3);
 AudioConnection          patchCord11(wave, 0, mixerL, 1);
 AudioConnection          patchCord12(wave, 0, mixerR, 1);
-AudioConnection          patchCord13(noise, 0, mixerL, 2);
-AudioConnection          patchCord14(noise, 0, mixerR, 2);
-AudioConnection          patchCord15(mixerL, 0, i2s, 0);
-AudioConnection          patchCord16(mixerR, 0, i2s, 1);
-AudioControlSGTL5000     sgtl5000_1;     //xy=1201,265
+AudioConnection          patchCord13(wave, 0, mixerDAC, 0);
+AudioConnection          patchCord14(noise, 0, mixerL, 2);
+AudioConnection          patchCord15(noise, 0, mixerR, 2);
+AudioConnection          patchCord16(mixerL, 0, i2s, 0);
+AudioConnection          patchCord17(mixerDAC, dac12);
+AudioConnection          patchCord18(mixerR, 0, i2s, 1);
+AudioControlSGTL5000     sgtl5000_1;     //xy=1140,282
 // GUItool: end automatically generated code
+
 
 //##############################################################################
 // ### 128x64 SSD1306 OLED config ###
@@ -299,7 +304,79 @@ AudioControlSGTL5000     sgtl5000_1;     //xy=1201,265
 Adafruit_SSD1306 display(OLED_RESET);
 
 //##############################################################################
-// ### Function definitionss ###
+// ### Function definitions ###
+//##############################################################################
+// ### onboard 12bit DAC update frequency -
+// I2S Fs update            by Frank B (https://forum.pjrc.com/threads/38753)
+// WAV player uses standard 44117...Hz Fs
+// Waveform generator (A) and Sine Sweep use 2x44117Hz setiing
+void setDACFreq(int freq)
+{
+    const unsigned config = PDB_SC_TRGSEL(15) | PDB_SC_PDBEN | PDB_SC_CONT | PDB_SC_PDBIE | PDB_SC_DMAEN;
+    PDB0_IDLY = 1;
+    PDB0_MOD = round((float)F_BUS / freq ) - 1;
+    PDB0_SC = config | PDB_SC_LDOK;
+    PDB0_SC = config | PDB_SC_SWTRIG;
+    PDB0_CH0C1 = 0x0101;
+}
+//##############################################################################
+void SGT_setFs(uint32_t freq)
+{
+    //SGTL5000 sampling freq reconfiguration, CHIP_CLK_CTRL register @ 0x0004
+    const int CHIP_CLK_CTRL_addr = 0x0004;      //register address
+    uint16_t regValue = 0x000C;                 //default library value for 44.1kHz, 256*Fs 0b00 00 01 00
+    if (freq == 44117)          regValue = 0x0004;
+    else if (freq == 44117*2)   regValue = 0x000C;
+
+    Wire.beginTransmission(0x0A);       //stock SGTL5000 I2C  slave address
+    Wire.write(CHIP_CLK_CTRL_addr >> 8);
+    Wire.write(CHIP_CLK_CTRL_addr);
+    Wire.write(regValue>>8);
+    Wire.write(regValue);
+    Wire.endTransmission();
+}
+
+void setI2SFreq(uint32_t freq)
+{
+    typedef struct
+    {
+        uint8_t mult;
+        uint16_t div;
+    } tmclk;
+    const int numfreqs = 14;
+    const uint32_t samplefreqs[numfreqs] = { 8000, 11025, 16000, 22050, 32000, 44100, 44117, 48000, 88200, 44117 * 2, 96000, 176400, 44117 * 4, 192000}; //(changed float values to uint)
+    #if (F_PLL==16000000)
+    const tmclk clkArr[numfreqs] = {{16, 125}, {148, 839}, {32, 125}, {145, 411}, {64, 125}, {151, 214}, {12, 17}, {96, 125}, {151, 107}, {24, 17}, {192, 125}, {127, 45}, {48, 17}, {255, 83} };
+    #elif (F_PLL==72000000)
+    const tmclk clkArr[numfreqs] = {{32, 1125}, {49, 1250}, {64, 1125}, {49, 625}, {128, 1125}, {98, 625}, {8, 51}, {64, 375}, {196, 625}, {16, 51}, {128, 375}, {249, 397}, {32, 51}, {185, 271} };
+    #elif (F_PLL==96000000)
+    const tmclk clkArr[numfreqs] = {{8, 375}, {73, 2483}, {16, 375}, {147, 2500}, {32, 375}, {147, 1250}, {2, 17}, {16, 125}, {147, 625}, {4, 17}, {32, 125}, {151, 321}, {8, 17}, {64, 125} };
+    #elif (F_PLL==120000000)
+    const tmclk clkArr[numfreqs] = {{32, 1875}, {89, 3784}, {64, 1875}, {147, 3125}, {128, 1875}, {205, 2179}, {8, 85}, {64, 625}, {89, 473}, {16, 85}, {128, 625}, {178, 473}, {32, 85}, {145, 354} };
+    #elif (F_PLL==144000000)
+    const tmclk clkArr[numfreqs] = {{16, 1125}, {49, 2500}, {32, 1125}, {49, 1250}, {64, 1125}, {49, 625}, {4, 51}, {32, 375}, {98, 625}, {8, 51}, {64, 375}, {196, 625}, {16, 51}, {128, 375} };
+    #elif (F_PLL==180000000)
+    const tmclk clkArr[numfreqs] = {{46, 4043}, {49, 3125}, {73, 3208}, {98, 3125}, {183, 4021}, {196, 3125}, {16, 255}, {128, 1875}, {107, 853}, {32, 255}, {219, 1604}, {214, 853}, {64, 255}, {219, 802} };
+    #elif (F_PLL==192000000)
+    const tmclk clkArr[numfreqs] = {{4, 375}, {37, 2517}, {8, 375}, {73, 2483}, {16, 375}, {147, 2500}, {1, 17}, {8, 125}, {147, 1250}, {2, 17}, {16, 125}, {147, 625}, {4, 17}, {32, 125} };
+    #elif (F_PLL==216000000)
+    const tmclk clkArr[numfreqs] = {{32, 3375}, {49, 3750}, {64, 3375}, {49, 1875}, {128, 3375}, {98, 1875}, {8, 153}, {64, 1125}, {196, 1875}, {16, 153}, {128, 1125}, {226, 1081}, {32, 153}, {147, 646} };
+    #elif (F_PLL==240000000)
+    const tmclk clkArr[numfreqs] = {{16, 1875}, {29, 2466}, {32, 1875}, {89, 3784}, {64, 1875}, {147, 3125}, {4, 85}, {32, 625}, {205, 2179}, {8, 85}, {64, 625}, {89, 473}, {16, 85}, {128, 625} };
+    #endif
+    AudioNoInterrupts();  // disable audio library momentarily
+    for (int f = 0; f < numfreqs; f++)
+    {
+        if ( freq == samplefreqs[f] )
+        {
+            while (I2S0_MCR & I2S_MCR_DUF) ;
+            I2S0_MDR = I2S_MDR_FRACT((clkArr[f].mult - 1)) | I2S_MDR_DIVIDE((clkArr[f].div - 1));
+            return;
+            SGT_setFs(freq);
+        }
+    }
+    AudioInterrupts();  //
+}
 //##############################################################################
 //### handle keypad ###
 void keypadEvent(KeypadEvent key)
@@ -349,8 +426,12 @@ void handleKeyPress(char key)
         case 'A':
                 engineState = SIG_GEN;
                 fileNameEditMode = SETNAME_OFF;     //exit fle name edit mode
+                freqMode = NOTE_MODE;
                 sigGen_freq = noteFreqTable[sigGen_oct][sigGen_note];
                 setSigGen(sigGen_freq, sigGen_wave);
+
+                setI2SFreq(44117 * 2);
+
                 mixerSetChannel(MUTE_ALL);
                 Timer1.stop();
                 displayStartScreen(SIG_GEN);
@@ -359,6 +440,7 @@ void handleKeyPress(char key)
                 engineState = SIN_SWEEP;
                 fileNameEditMode = SETNAME_OFF;     //exit fle name edit mode
                 mixerSetChannel(MUTE_ALL);
+                setI2SFreq(44117 * 2);
                 Timer1.stop();
                 displayStartScreen(SIN_SWEEP);
 
@@ -367,6 +449,9 @@ void handleKeyPress(char key)
                 engineState = SD_WAV_PLAY;
                 fileNameEditMode = SETNAME_OFF;     //exit fle name edit mode
                 mixerSetChannel(MUTE_ALL);
+
+                setI2SFreq(44117);
+
                 displayMode();
                 displayClrMainArea();
                 if (SDinitComplete==false)
@@ -374,10 +459,12 @@ void handleKeyPress(char key)
                     if (!(SD.begin(SDCARD_CS_PIN)))
                     {
                         SDinitComplete = false;
-                        display.setCursor(DISP_TXT_COL0,DISP_TXT_ROW2);
+                        displayClrMainArea();
+                        display.setCursor(DISP_TXT_COL0,DISP_TXT_ROW0);
                         display.println("SD access failed");
                         display.println("Switching back to ");
                         display.println("Sig Gen in 2 sec...");
+                        display.display();
                         delay(2000);
                         engineState = SIG_GEN;
                         displayStartScreen(SIG_GEN);
@@ -398,6 +485,7 @@ void handleKeyPress(char key)
         case 'D':
                 engineState = NOISE_GEN;
                 fileNameEditMode = SETNAME_OFF;     //exit fle name edit mode
+                setI2SFreq(44117);
                 mixerSetChannel(MUTE_ALL);
                 Timer1.stop();
                 displayStartScreen(NOISE_GEN);
@@ -415,12 +503,22 @@ void handleKeyPress(char key)
                     case SD_WAV_PLAY:
                                 keypadHandleWavPlayer(key);
                                 break;
-                    case SIG_GEN:   //100Hz preset
-                                sigGen_freq = FREQ_1;
-                                setSigGen(sigGen_freq, sigGen_wave);
-                                mixerSetChannel(SIGNAL_GEN);
-                                displayClrMainArea();
-                                displayFreq(FREQ_1);
+                    case SIG_GEN:   //KEY1 preset
+                                sigGen_oct = FREQ_TECH_OCT;
+                                sigGen_note = 0;
+                                sigGen_freq = noteFreqTable[sigGen_oct][sigGen_note];
+                                if (setSigGen(sigGen_freq, sigGen_wave))
+                                {
+                                    mixerSetChannel(SIGNAL_GEN);
+                                    displayClrMainArea();
+                                    displayNote(sigGen_oct, sigGen_note);
+                                }
+                                else
+                                {
+                                    mixerSetChannel(MUTE_ALL);
+                                    displayClrMainArea();
+                                    displayFreqWarning();
+                                }
                                 break;
                     default:
                                 break;
@@ -465,11 +563,21 @@ void handleKeyPress(char key)
                                 keypadHandleWavPlayer(key);
                                 break;
                     case SIG_GEN:   //1kHz preset
-                                sigGen_freq = FREQ_3;
-                                setSigGen(sigGen_freq, sigGen_wave);
-                                mixerSetChannel(SIGNAL_GEN);
-                                displayClrMainArea();
-                                displayFreq(FREQ_3);
+                                sigGen_oct = FREQ_TECH_OCT;
+                                sigGen_note = 1;
+                                sigGen_freq = noteFreqTable[sigGen_oct][sigGen_note];
+                                if (setSigGen(sigGen_freq, sigGen_wave))
+                                {
+                                    mixerSetChannel(SIGNAL_GEN);
+                                    displayClrMainArea();
+                                    displayNote(sigGen_oct, sigGen_note);
+                                }
+                                else
+                                {
+                                    mixerSetChannel(MUTE_ALL);
+                                    displayClrMainArea();
+                                    displayFreqWarning();
+                                }
                                 break;
                     default:
                                 break;
@@ -575,11 +683,21 @@ void handleKeyPress(char key)
                                 keypadHandleWavPlayer(key);
                                 break;
                     case SIG_GEN:   //5kHz preset
-                                sigGen_freq = FREQ_7;
-                                setSigGen(sigGen_freq, sigGen_wave);
-                                mixerSetChannel(SIGNAL_GEN);
-                                displayClrMainArea();
-                                displayFreq(FREQ_7);
+                                sigGen_oct = FREQ_TECH_OCT;
+                                sigGen_note = 2;
+                                sigGen_freq = noteFreqTable[sigGen_oct][sigGen_note];
+                                if (setSigGen(sigGen_freq, sigGen_wave))
+                                {
+                                    mixerSetChannel(SIGNAL_GEN);
+                                    displayClrMainArea();
+                                    displayNote(sigGen_oct, sigGen_note);
+                                }
+                                else
+                                {
+                                    mixerSetChannel(MUTE_ALL);
+                                    displayClrMainArea();
+                                    displayFreqWarning();
+                                }
                                 break;
                     default:
                                 break;
@@ -622,11 +740,21 @@ void handleKeyPress(char key)
                                 keypadHandleWavPlayer(key);
                                 break;
                     case SIG_GEN:   //10kHz preset
-                                sigGen_freq = FREQ_9;
-                                setSigGen(sigGen_freq, sigGen_wave);
-                                mixerSetChannel(SIGNAL_GEN);
-                                displayClrMainArea();
-                                displayFreq(FREQ_9);
+                                sigGen_oct = FREQ_TECH_OCT;
+                                sigGen_note = 3;
+                                sigGen_freq = noteFreqTable[sigGen_oct][sigGen_note];
+                                if (setSigGen(sigGen_freq, sigGen_wave))
+                                {
+                                    mixerSetChannel(SIGNAL_GEN);
+                                    displayClrMainArea();
+                                    displayNote(sigGen_oct, sigGen_note);
+                                }
+                                else
+                                {
+                                    mixerSetChannel(MUTE_ALL);
+                                    displayClrMainArea();
+                                    displayFreqWarning();
+                                }
                                 break;
                     default:
                                 break;
@@ -645,11 +773,21 @@ void handleKeyPress(char key)
                                 keypadHandleWavPlayer(key);
                                 break;
                     case SIG_GEN:   //22kHz preset
-                                sigGen_freq = FREQ_0;
-                                setSigGen(sigGen_freq, sigGen_wave);
-                                mixerSetChannel(SIGNAL_GEN);
-                                displayClrMainArea();
-                                displayFreq(FREQ_0);
+                                sigGen_oct = FREQ_TECH_OCT;
+                                sigGen_note = 4;
+                                sigGen_freq = noteFreqTable[sigGen_oct][sigGen_note];
+                                if (setSigGen(sigGen_freq, sigGen_wave))
+                                {
+                                    mixerSetChannel(SIGNAL_GEN);
+                                    displayClrMainArea();
+                                    displayNote(sigGen_oct, sigGen_note);
+                                }
+                                else
+                                {
+                                    mixerSetChannel(MUTE_ALL);
+                                    displayClrMainArea();
+                                    displayFreqWarning();
+                                }
                                 break;
                     default:
                                 break;
@@ -721,14 +859,25 @@ void handleKeyPress(char key)
                                                     break;
                                 }
                                 break;
-                    case SIG_GEN:                   //scroll throuvh wavefoprms, arb not used
+                    case SIG_GEN:                   //scroll through wavefoprms, arb not used
                                 sigGen_wave++;
                                 if (sigGen_wave > MAX_WAVEFORMS)
                                 {
                                     sigGen_wave = 0;
                                 }
-                                setSigGen(sigGen_freq, sigGen_wave);
                                 displayWaveSymbol(sigGen_wave);
+                                if (setSigGen(sigGen_freq, sigGen_wave))
+                                {
+                                    mixerSetChannel(SIGNAL_GEN);
+                                    displayClrMainArea();
+                                    displayNote(sigGen_oct, sigGen_note);
+                                }
+                                else
+                                {
+                                    mixerSetChannel(MUTE_ALL);
+                                    displayClrMainArea();
+                                    displayFreqWarning();
+                                }
                                 break;
                     default:
                                 break;
@@ -768,25 +917,29 @@ bool keypadHandleWavPlayer(char key)
     Turns on one channel, mutes the rest
     ch = 0 -> mute all channels
 */
-void mixerSetChannel(outputChannel_t ch)
+bool mixerSetChannel(outputChannel_t ch)
 {
+    bool out = true;       //possible future uses
     byte i;
     AudioNoInterrupts();  // disable audio library momentarily
     switch (ch)
     {
         case MUTE_ALL:  //all channels OFF
+                        digitalWrite(RELAY_CTRL,LOW);
                         for (i = 0;i<4;i++)
                         {
                             mixerL.gain(i,0);
                             mixerR.gain(i,0);
                             mixerSD_L.gain(i,0);
                             mixerSD_R.gain(i,0);
+                            mixerDAC.gain(i,0);
                         }
                         noise.amplitude(0); //switch off
                         pink.amplitude(0);  //all sources
                         playSdWavA.stop();
                         playSdWavB.stop();
                         tonesweep.stop();
+                        out = true;
                         break;
         case WAV_PLAYER:
                         mixerSetChannel(MUTE_ALL);
@@ -801,6 +954,15 @@ void mixerSetChannel(outputChannel_t ch)
                         mixerSetChannel(MUTE_ALL);
                         mixerR.gain(SIG_GEN_CH,1);
                         mixerL.gain(SIG_GEN_CH,1);
+
+                        mixerDAC.gain(0,1);    //use 12bit DAC
+
+                        // if (sigGen_wave == 2 || sigGen_wave == 3)   //SQR or pulse
+                        // {
+                        //     mixerDAC.gain(0,1);    //use 12bit DAC
+                        //     digitalWrite(RELAY_CTRL,HIGH);  //relay on
+                        // }
+
                         break;
         case WHITE_NOISE:
                         mixerSetChannel(MUTE_ALL);
@@ -826,6 +988,7 @@ void mixerSetChannel(outputChannel_t ch)
                         break;
     }
     AudioInterrupts();    // enable, both tones will start together
+    return out;
 }
 //##############################################################################
 // ### Parameter display functions ###
@@ -878,8 +1041,15 @@ void displayNote(uint8_t octave, uint8_t note)
 {
     display.setCursor(DISP_TXT_COL0,DISP_TXT_ROW0);
     display.setTextSize(3);
-    display.print(noteNameTable[note]);
-    display.print(octave);
+    if (octave == FREQ_TECH_OCT)
+    {
+        display.print(noteNameTable[note+12]);
+    }
+    else
+    {
+        display.print(noteNameTable[note]);
+        display.print(octave);
+    }
     display.setTextSize(2);
     display.setCursor(DISP_TXT_COL0,DISP_TXT_ROW2);
     display.print(noteFreqTable[octave][note]);
@@ -887,14 +1057,15 @@ void displayNote(uint8_t octave, uint8_t note)
     display.setTextSize(1);
 }
 //##############################################################################
-// ###  displays the frequency only.
-void displayFreq(float freq)
+// ###  displays warnng if the set frequency exceedes the allowed value .
+void displayFreqWarning(void)
 {
-    display.setTextSize(2);
-    display.setCursor(DISP_TXT_COL0,DISP_TXT_ROW2);
-    display.print(freq);
-    display.print("Hz");
-    display.setTextSize(1);
+    display.setCursor(25,DISP_TXT_ROW0);
+    display.println("Max frequency");
+    display.setCursor(10,DISP_TXT_ROW1);
+    display.println("for this waveform");
+    display.setCursor(35,DISP_TXT_ROW2);
+    display.print("exceeded.");
 }
 //##############################################################################
 // ###  display waveform symbol as bitmap
@@ -1107,9 +1278,10 @@ void displayUpdate(void)
 }
 //##############################################################################
 // ### start sin sweep ###
-void playSinSweep(float time_ms, int dir)
+bool playSinSweep(float time_ms, int dir)
 {
     tonesweep.play(sinSweepLvl, sinSweepStartF, sinSweepEndF, time_ms, dir);
+    return true;
 }
 //##############################################################################
 //### play a wav fime from the SD card ###
@@ -1234,20 +1406,30 @@ void ISR_checkWavePosition(void)
     }
 }
 //##############################################################################
-//### oscillator setup ###
-//    starts the waveform generator with preset frequency and waveform
-
-void setSigGen(float freq, short waveform)
+//###  oscillator setup ###
+/*  starts the waveform generator with preset frequency and waveform
+ *  available range for waveforms:
+ *  SIN/TRI/SQR/PULSE: 16-18kHz
+ *  SQR and PULSE use 12bit DAC instead of the codec, hence they are able
+ *  to produce a pure square wave
+ *  RampUp & Down are heavily aliased beyond 8kHz, hence the limitation
+ */
+bool setSigGen(float freq, short waveform)
 {
-    if (waveform>MAX_WAVEFORMS) waveform=MAX_WAVEFORMS;
-    wave.begin(SIGGEN_AMPL_DEFAULT, freq, waveIndex[waveform]);
+    bool out = false;
+    if (waveform>MAX_WAVEFORMS) return out;
+    if (freq > 8000 && waveform > 3) return out;       //4,5 = RampDown, RampUp
+    out = true;
+    wave.begin(SIGGEN_AMPL_DEFAULT, freq/2 , waveIndex[waveform]);
+    return out;
 }
 //##############################################################################
 void setup()
 {
     Serial.begin(115200);
     delay(100);
-
+    pinMode(RELAY_CTRL,OUTPUT);                 //relay ctrl
+    digitalWrite(RELAY_CTRL, LOW);              //switch off
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x78
     delay(100);
     Wire.setClock(400000);  //i2c clock speed = 400kHz
@@ -1264,6 +1446,9 @@ void setup()
     sgtl5000_1.volume(0.5);
     sgtl5000_1.muteHeadphone();
 
+    setDACFreq(44117 * 2);
+    setI2SFreq(44117 * 2);
+
     Timer1.initialize(2000);
     Timer1.attachInterrupt(ISR_checkWavePosition);
 
@@ -1279,6 +1464,7 @@ void setup()
         display.clearDisplay();
         display.setCursor(DISP_TXT_COL0,DISP_TXT_ROW2);
         display.println("SD access failed");
+        display.display();
         delay(2000);
         displayMainArea();
     }

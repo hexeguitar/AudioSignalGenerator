@@ -41,7 +41,7 @@
 
 const char * help_txt[]=
 {
-    "A: Waveform generator\n\n1:100Hz   2:Oct Up\n3: 1kHz   8:Oct Down\n7: 5kHz   6:Note Up\n9:10kHz   4:Note Down\n0:22kHz   5:A=440Hz\n*:Wave    #:Duty",
+    "A: Waveform generator\n\n1:100Hz   2:Oct Up\n3: 1kHz   8:Oct Down\n7: 5kHz   6:Note Up\n9:10kHz   4:Note Down\n0:18kHz   5:A=440Hz\n*:Wave    #:Duty",
     "B: Sine Sweep\n\n0-9: Start sweep\nNumber sets the speed\n*:Pause\n#:Flip direction",
     "C: Wav file player\n\n44.1kHz stereo 16bit\nnaming: waveXX.wav\nXX=00-99\n0-9:Play file 00-09\n*:Enter new file No\n#:Stop/Mute",
     "D: Noise generator\n\n1:White noise\n2:Pink noise\n#:Mute/OFF"

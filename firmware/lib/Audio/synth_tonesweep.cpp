@@ -66,7 +66,6 @@ if(0) {
   tone_sign = t_dir;
 
   tone_amp = t_amp * 32767.0;
-
   if (t_hi >= t_lo)
   {
     tone_hi = t_hi;
@@ -93,13 +92,11 @@ if(0) {
 
   return(true);
 }
-
-
 //------------------------------------------------------------------------------
 /*
     Exponential function shaper. Takes linear input and returns
-    valie mapped to exponential curve.
-    uses exp_table placed in  data_waveforms.c
+    value mapped to exponential curve.
+    Uses exp_table placed in  data_waveforms.c
     Internal range is 15bit
 */
 
@@ -145,11 +142,11 @@ void AudioSynthToneSweep::update(void)
     uint32_t tmp  = tone_freq >> 32;
     freq_exp = getExpFreq(tmp);
 
-    uint64_t tone_tmp = (0x400000000000LL * (int)(freq_exp&0x7fffffff)) / (int) AUDIO_SAMPLE_RATE_EXACT;
+    uint64_t tone_tmp = (0x400000000000LL * (int)(freq_exp&0x7fffffff)) / (int) (AUDIO_SAMPLE_RATE_EXACT*2); //for 88.2kHz I2S
     // Generate the sweep
     for(i = 0;i < AUDIO_BLOCK_SAMPLES;i++)
     {
-      *bp++ = (short)(( (short)(arm_sin_q31((uint32_t)((tone_phase >> 15)&0x7fffffff))>>16) *tone_amp) >> 16);
+      *bp++ = (short)(( (short)(arm_sin_q31((uint32_t)((tone_phase >> 15)&0x7fffffff))>>16) *tone_amp) >> 15);      //
 
       tone_phase +=  tone_tmp;
       if(tone_phase & 0x800000000000LL)tone_phase &= 0x7fffffffffffLL;

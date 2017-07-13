@@ -1,7 +1,16 @@
 Audio Test Signal Generator
 ========
-
+##### (work in progress...)
 Teensy3.1/3.2 based audio range test signal generator designed to aid building musical instruments and effects.    
+
+#### Changelog
+
+* V1.1
+    - added reconfigurable I2S Fs, uses stock value (44.117kHz) for WAV player and doubles it in waveform generator and sine sweep modes (~88.2kHz)
+    - reduced max frequency for the Ramp Up/Down waveforms to 8kHz. Above that value the aliasing was too strong
+    - added a secondary output - the 12bit onboard DAC. It will be used to output the square and pulse waveforms in the waveform generator mode. The codec and it's built in anti aliasing filters does not reproduce sharp edges very well (ringing). For square/pulse wave the bit resolution does not really matter, the bandwidth does. D20 ouput pin will be used to switch the output signal between the codec DACs and the onboad 12bit DAC.
+* V1.0 Initial release
+
 
 [![AudioTestSignalGenerator](http://img.youtube.com/vi/fiGgEgc5klA/0.jpg)](http://www.youtube.com/watch?v=fiGgEgc5klA)
 
@@ -48,7 +57,9 @@ I have modified or upgraded a few libraries to get the planned features and make
         * added sweep pause option
         * added sweep direction control
         * added sweep stop option
+        * fixed a few bugs reported [here](https://forum.pjrc.com/threads/45246)
     - **synth_waveform:**   fixed a small bug, pulse waveform was generated at half of the set frequency
+    - moved the **AudioStream.cpp and AudioStream.h** files to a local lib folder, so the changes will not interfere with the installed original library.
 2. **SD.h** : Teensy optimization turned on
 3. **Adafruit_SSD1306_t3.h** - uses i2c_t3 lib in DMA mode instad of stock Wire.h
 
@@ -78,7 +89,7 @@ Modified libraries are supplied with the project (*/lib*). There is no extra ste
 17    Keypad row 0
 18    I2C SDA
 19    I2C SCL
-20    (A6) - free
+20    output DAC relay/switch control
 21    (A7) - free
 22    I2S TX (codec)
 23    I2S LRCLK (codec)

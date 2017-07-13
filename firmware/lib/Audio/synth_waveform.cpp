@@ -54,15 +54,16 @@ void AudioSynthWaveform::update(void)
     switch(tone_type) {
     case WAVEFORM_SINE:
       for(int i = 0;i < AUDIO_BLOCK_SAMPLES;i++) {
-      	// Calculate interpolated sin
-		index = tone_phase >> 23;
-		val1 = AudioWaveformSine[index];
-		val2 = AudioWaveformSine[index+1];
-		scale = (tone_phase >> 7) & 0xFFFF;
-		val2 *= scale;
-		val1 *= 0xFFFF - scale;
-		val3 = (val1 + val2) >> 16;
-		*bp++ = (short)((val3 * tone_amp) >> 15);
+
+        // Calculate interpolated sin
+        index = tone_phase >> 23;
+        val1 = AudioWaveformSine[index];
+        val2 = AudioWaveformSine[index+1];
+        scale = (tone_phase >> 7) & 0xFFFF;
+        val2 *= scale;
+        val1 *= 0xFFFF - scale;
+        val3 = (val1 + val2) >> 16;
+        *bp++ = (short)((val3 * tone_amp) >> 15);
 
         // phase and incr are both unsigned 32-bit fractions
         tone_phase += tone_incr;

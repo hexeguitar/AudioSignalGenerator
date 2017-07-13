@@ -176,8 +176,6 @@ char currentFile[] = "wave00.wav";
 #define SIGGEN_PHASE_DEFAULT    0
 #define SIGGEN_MAX_OCTAVE       8
 #define SIGGEN_AMPL_DEFAULT     1
-#define NOTE_MODE               true
-#define TECH_MODE               false
 #define NOTE_C                  0
 #define NOTE_B                  11
 #define NOTE_A                  9
@@ -198,7 +196,6 @@ uint8_t sigGen_oct = 4;         //default octave is 4
 short sigGen_wave = 0;
 float sigGen_duty = 1.0;
 float sigGen_freq = noteFreqTable[sigGen_oct][sigGen_note];
-bool freqMode = NOTE_MODE;
 //##############################################################################
 // ### Sin Sweep Generator ###
 #define SINSWEEP_DIR_UP     1
@@ -426,12 +423,9 @@ void handleKeyPress(char key)
         case 'A':
                 engineState = SIG_GEN;
                 fileNameEditMode = SETNAME_OFF;     //exit fle name edit mode
-                freqMode = NOTE_MODE;
                 sigGen_freq = noteFreqTable[sigGen_oct][sigGen_note];
                 setSigGen(sigGen_freq, sigGen_wave);
-
                 setI2SFreq(44117 * 2);
-
                 mixerSetChannel(MUTE_ALL);
                 Timer1.stop();
                 displayStartScreen(SIG_GEN);
@@ -443,15 +437,12 @@ void handleKeyPress(char key)
                 setI2SFreq(44117 * 2);
                 Timer1.stop();
                 displayStartScreen(SIN_SWEEP);
-
                 break;
         case 'C':
                 engineState = SD_WAV_PLAY;
                 fileNameEditMode = SETNAME_OFF;     //exit fle name edit mode
                 mixerSetChannel(MUTE_ALL);
-
                 setI2SFreq(44117);
-
                 displayMode();
                 displayClrMainArea();
                 if (SDinitComplete==false)

@@ -41,12 +41,13 @@ Teensy3.1/3.2 based audio range test signal generator designed to aid building m
 #### Hardware:  
 * [Teensy3.1 or 3.2](https://www.pjrc.com/store/teensy32.html)  
 * [Teensy Audio Shield](https://www.pjrc.com/store/teensy3_audio.html)  
-* [Dev_LOOP](http://www.hexeguitar.com/diy/utility/devloop)   
+* [Dev_LOOP](http://www.hexeguitar.com/diy/utility/devloop) - optional, use do control the output level and buffer the codec's line outputs.     
 * 4x4 Keypad
 * SSD1306 I2C OLED display
 ------
 #### Software:  
 Firmware has been written using [PlatformIO](http://platformio.org/) and Atom text editor.  
+Installation procedure is avalilable [here](http://docs.platformio.org/en/latest/ide/atom.html#installation).  
 The full project is available in the */firmware* directory.  
 
 I have modified or upgraded a few libraries to get the planned features and make the best (or better vs stock Arduino libs) use of the hardware on the Teensy3:

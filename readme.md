@@ -95,6 +95,11 @@ Modified libraries are supplied with the project (*/lib*). There is no extra ste
 22    I2S TX (codec)
 23    I2S LRCLK (codec)
 ```
+#### Prototype wiring:
+![alt text][pic8]
+
+**LINE OUT** is used as the main codec output.
+
 ------
 ### Keypad mapping
 ![alt text][pic1]
@@ -116,10 +121,30 @@ wave99.wav
 where **XX** is the number in range 00 to 99.  
 
 ------
+### Alternative ways to flash the Teensy   
+
+In case you don't wan't to install PlatformIO a command line tool can be used to program Teensy3.1/3.2 with the provided firmware *hex* file.  
+The teensy command line loader can be dowloaded directly from PRJC site:
+https://www.pjrc.com/teensy/loader_cli.html  
+After dowmloading the software, unpack it to the folder where the hex file is stored and use the following command to upload the firmware into the MCU:
+```
+teensy_loader_cli -mmcu=mk20dx256 -w -v firmware.hex
+```
+![alt text][pic7]
+
+Alternatively you can use the built in Arduino Teensy Loader to flash a custom hex file. Assuming you have installed the Arduino "IDE" and the Teensyduino follow these steps:
+1. Open a new empty sketch in Arduino and set the board to Teensy 3.1/3.2.
+2. Press upload, the sketch will be compiled and the Teensy Loader window will show up.
+3. Click "File" and open the firmware.hex file included in the *hex* folder.
+4. Press the Program button on the Teensy to start the upload.
+5. Done!  
+
+![alt text][pic6]
+
+------
 
 ### To do:
 - Check for potential bugs caused by the lack of SD card or init gone bad.
-- Square and Pulse waveforms - maybe use the onboard DAC instad of audio codec. One of the free pins could be used to drive a relay switching between codec and DAC outputs.
 - Dedicated analog IO board for the Teensy Audio Shield.
 
 ------
@@ -132,3 +157,6 @@ www.hexeguitar.com
 [pic3]: pics/WavPlay_keypad.png "WavPlayer"
 [pic4]: pics/NoiseGen_keypad.png "NoiseGenerator"
 [pic5]: pics/block_diag.png "BlockDiagram"
+[pic6]: pics/TennsyLoader.png "LoadCustomHex"
+[pic7]: pics/TeensyCLI.png "Teensy CLI programming"
+[pic8]: hardware/SchmV1.1.png "Prototype wiring"

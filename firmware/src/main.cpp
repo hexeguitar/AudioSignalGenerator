@@ -112,8 +112,8 @@ typedef enum
 }outputChannel_t;
 // available output channels:
 #define WAV_PLAY_CH     0
-#define WAV_PLAY_CHSDA  0       //wav player A
-#define WAV_PLAY_CHSDB  1       //wav player B
+#define WAV_PLAY_CHSDA  0       //wav player A (SD mixer)
+#define WAV_PLAY_CHSDB  1       //wav player B (SD mixer)
 
 #define SIG_GEN_CH      1
 #define WHITE_NOISE_CH  2
@@ -176,14 +176,14 @@ char currentFile[] = "wave00.wav";
 #define SIGGEN_PHASE_DEFAULT    0
 #define SIGGEN_MAX_OCTAVE       8
 #define SIGGEN_AMPL_DEFAULT     1
+#define SIGGEN_F_LIMIT          8000
 #define NOTE_C                  0
 #define NOTE_B                  11
 #define NOTE_A                  9
-#define NOTE_OFF                255 //used to turn displaying the note off
 #define FREQ_TECH_OCT           9
-#define MAX_WAVEFORMS           5
+#define MAX_WAVEFORMS           6
 
-const uint8_t waveIndex[MAX_WAVEFORMS+1] = {
+const uint8_t waveIndex[MAX_WAVEFORMS] = {
                                 WAVEFORM_SINE,                  //SIN 0
                                 WAVEFORM_TRIANGLE,              //TRI 1
                                 WAVEFORM_SQUARE,                //SQR 2
@@ -852,7 +852,7 @@ void handleKeyPress(char key)
                                 break;
                     case SIG_GEN:                   //scroll through wavefoprms, arb not used
                                 sigGen_wave++;
-                                if (sigGen_wave > MAX_WAVEFORMS)
+                                if (sigGen_wave > MAX_WAVEFORMS-1)
                                 {
                                     sigGen_wave = 0;
                                 }
@@ -1062,7 +1062,7 @@ void displayFreqWarning(void)
 // ###  display waveform symbol as bitmap
 void displayWaveSymbol(uint8_t wave)
 {
-    if (wave>MAX_WAVEFORMS) return;
+    if (wave>MAX_WAVEFORMS-1) return;
     display.fillRect(110,0,16,8,BLACK);
     display.drawBitmap(110, 0, waveSymbols+(wave*16), 16,8, WHITE);
 }
@@ -1408,8 +1408,8 @@ void ISR_checkWavePosition(void)
 bool setSigGen(float freq, short waveform)
 {
     bool out = false;
-    if (waveform>MAX_WAVEFORMS) return out;
-    if (freq > 8000 && waveform > 3) return out;       //4,5 = RampDown, RampUp
+    if (waveform>MAX_WAVEFORMS-1) return out;
+    if (freq > SIGGEN_F_LIMIT && waveform > 3) return out;       //4,5 = RampDown, RampUp
     out = true;
     wave.begin(SIGGEN_AMPL_DEFAULT, freq/2 , waveIndex[waveform]);
     return out;
